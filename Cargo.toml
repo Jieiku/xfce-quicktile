@@ -1,0 +1,10 @@
+[package]
+name = "xfce-quicktile"
+version = "0.1.0"
+edition = "2021"
+description = "KDE-style directional quick tiling for XFCE on X11"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+x11rb = { version = "0.13", features = ["randr"] }

@@ -4,6 +4,8 @@ A lightweight Rust daemon for KDE-style directional quick tiling on X11. Uses XR
 
 The daemon is not XFCE-dependent, but the included installer configures XFCE autostart and keyboard shortcuts.
 
+![quicktile](quicktile.gif)
+
 ## Behavior
 
 Each monitor is divided into left/right and top/bottom halves. Directional shortcuts cycle through three states:

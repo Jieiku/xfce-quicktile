@@ -97,9 +97,15 @@ fn infer_state(monitors: &[Monitor], monitor: usize, actual: Geometry) -> TileSt
 /// rectangles for monitor selection and adjacency. Both slices must describe
 /// the same RandR snapshot in the same stable order.
 ///
-/// Each axis follows a three-step cycle. Crossing a monitor boundary lands on
-/// the opposite half of the destination monitor (Left -> Right, Right -> Left,
-/// Up -> Bottom, Down -> Top), preserving the tile on the perpendicular axis.
+/// KDE/Plasma-style behaviour:
+/// - When the window occupies a pure half (the perpendicular axis is Full),
+///   pressing the opposite direction flips it to the other half instead of
+///   expanding to full-screen.
+/// - When the window occupies a quadrant (both axes half), pressing a
+///   direction expands that axis to Full (the only case that "extends").
+/// - From Full on an axis, the direction moves to the corresponding half.
+/// - Crossing a monitor boundary lands on the opposite half of the destination
+///   monitor, preserving the tile on the perpendicular axis.
 ///
 /// At an outer edge with no neighboring monitor in the requested direction,
 /// all four directions return `Ok(None)` ("already at the desktop boundary").
@@ -125,7 +131,14 @@ pub fn advance_with_topology(
 
     match direction {
         Direction::Left => match state.column {
-            Column::Right => state.column = Column::Full,
+            Column::Right => {
+                // Pure right half → flip to left half; quadrant → expand to full width.
+                if state.row == Row::Full {
+                    state.column = Column::Left;
+                } else {
+                    state.column = Column::Full;
+                }
+            }
             Column::Full => state.column = Column::Left,
             Column::Left => {
                 let Some(monitor) = neighbor_monitor(physical_monitors, state.monitor, direction)
@@ -137,7 +150,14 @@ pub fn advance_with_topology(
             }
         },
         Direction::Right => match state.column {
-            Column::Left => state.column = Column::Full,
+            Column::Left => {
+                // Pure left half → flip to right half; quadrant → expand to full width.
+                if state.row == Row::Full {
+                    state.column = Column::Right;
+                } else {
+                    state.column = Column::Full;
+                }
+            }
             Column::Full => state.column = Column::Right,
             Column::Right => {
                 let Some(monitor) = neighbor_monitor(physical_monitors, state.monitor, direction)
@@ -149,7 +169,14 @@ pub fn advance_with_topology(
             }
         },
         Direction::Up => match state.row {
-            Row::Bottom => state.row = Row::Full,
+            Row::Bottom => {
+                // Pure bottom half → flip to top half; quadrant → expand to full height.
+                if state.column == Column::Full {
+                    state.row = Row::Top;
+                } else {
+                    state.row = Row::Full;
+                }
+            }
             Row::Full => state.row = Row::Top,
             Row::Top => {
                 let Some(monitor) = neighbor_monitor(physical_monitors, state.monitor, direction)
@@ -161,7 +188,14 @@ pub fn advance_with_topology(
             }
         },
         Direction::Down => match state.row {
-            Row::Top => state.row = Row::Full,
+            Row::Top => {
+                // Pure top half → flip to bottom half; quadrant → expand to full height.
+                if state.column == Column::Full {
+                    state.row = Row::Bottom;
+                } else {
+                    state.row = Row::Full;
+                }
+            }
             Row::Full => state.row = Row::Bottom,
             Row::Bottom => {
                 let Some(monitor) = neighbor_monitor(physical_monitors, state.monitor, direction)
@@ -362,6 +396,101 @@ mod tests {
             .unwrap()
             .unwrap();
         (up, down)
+    }
+
+    #[test]
+    fn pure_half_right_flips_to_other_half() {
+        // KDE-style: pure left half + Right → pure right half (does not go full).
+        let actual = geo(0, 0, 1, 1);
+        let next = advance_with_topology(
+            Direction::Right,
+            &SINGLE,
+            &SINGLE,
+            actual,
+            Some(tile_state(0, Column::Left, Row::Full)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (next.monitor, next.column, next.row),
+            (0, Column::Right, Row::Full)
+        );
+    }
+
+    #[test]
+    fn pure_half_left_flips_to_other_half() {
+        // KDE-style: pure right half + Left → pure left half (does not go full).
+        let actual = geo(0, 0, 1, 1);
+        let next = advance_with_topology(
+            Direction::Left,
+            &SINGLE,
+            &SINGLE,
+            actual,
+            Some(tile_state(0, Column::Right, Row::Full)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (next.monitor, next.column, next.row),
+            (0, Column::Left, Row::Full)
+        );
+    }
+
+    #[test]
+    fn pure_half_down_flips_to_other_half() {
+        // KDE-style: pure top half + Down → pure bottom half (does not go full).
+        let actual = geo(0, 0, 1, 1);
+        let next = advance_with_topology(
+            Direction::Down,
+            &SINGLE,
+            &SINGLE,
+            actual,
+            Some(tile_state(0, Column::Full, Row::Top)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (next.monitor, next.column, next.row),
+            (0, Column::Full, Row::Bottom)
+        );
+    }
+
+    #[test]
+    fn pure_half_up_flips_to_other_half() {
+        // KDE-style: pure bottom half + Up → pure top half (does not go full).
+        let actual = geo(0, 0, 1, 1);
+        let next = advance_with_topology(
+            Direction::Up,
+            &SINGLE,
+            &SINGLE,
+            actual,
+            Some(tile_state(0, Column::Full, Row::Bottom)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (next.monitor, next.column, next.row),
+            (0, Column::Full, Row::Top)
+        );
+    }
+
+    #[test]
+    fn quadrant_still_extends_on_horizontal() {
+        // Quadrants still expand (the only case that extends rather than flips).
+        let actual = geo(0, 0, 1, 1);
+        let next = advance_with_topology(
+            Direction::Right,
+            &SINGLE,
+            &SINGLE,
+            actual,
+            Some(tile_state(0, Column::Left, Row::Top)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (next.monitor, next.column, next.row),
+            (0, Column::Full, Row::Top)
+        );
     }
 
     #[test]
@@ -822,9 +951,10 @@ mod tests {
     fn infer_state_top_half_height() {
         let monitors = [monitor(0, 0, 1000, 1000)];
         let actual = geo(0, 0, 1000, 500);
-        // A window in the top half is inferred as Row::Top: Up from Top is
-        // the desktop boundary on a single monitor, Down steps to Full.
-        // Together they fix the inferred state as (0, Full, Top).
+        // A window in the top half is inferred as pure Top (full width):
+        // Up from Top is the desktop boundary on a single monitor, Down
+        // flips to Bottom (KDE-style). Together they fix the inferred
+        // state as (0, Full, Top).
         let up = advance_with_topology(Direction::Up, &monitors, &monitors, actual, None).unwrap();
         assert!(up.is_none());
         let down = advance_with_topology(Direction::Down, &monitors, &monitors, actual, None)
@@ -832,7 +962,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (down.monitor, down.column, down.row),
-            (0, Column::Full, Row::Full)
+            (0, Column::Full, Row::Bottom)
         );
     }
 
@@ -840,16 +970,13 @@ mod tests {
     fn infer_state_bottom_half_height() {
         let monitors = [monitor(0, 0, 1000, 1000)];
         let actual = geo(0, 500, 1000, 500);
-        // A window in the bottom half is inferred as Row::Bottom: Down from
-        // Bottom is the desktop boundary, Up steps to Full. Together they
-        // fix the inferred state as (0, Full, Bottom).
+        // A window in the bottom half is inferred as pure Bottom (full width):
+        // Down from Bottom is the desktop boundary, Up flips to Top
+        // (KDE-style). Together they fix the inferred state as (0, Full, Bottom).
         let up = advance_with_topology(Direction::Up, &monitors, &monitors, actual, None)
             .unwrap()
             .unwrap();
-        assert_eq!(
-            (up.monitor, up.column, up.row),
-            (0, Column::Full, Row::Full)
-        );
+        assert_eq!((up.monitor, up.column, up.row), (0, Column::Full, Row::Top));
         let down =
             advance_with_topology(Direction::Down, &monitors, &monitors, actual, None).unwrap();
         assert!(down.is_none());
@@ -897,8 +1024,9 @@ mod tests {
     #[test]
     fn infer_state_height_699_of_1000_is_top_not_full() {
         // 10*699 = 6990 < 7*1000 = 7000; center_y (349) < 500, so Top,
-        // NOT Full. Inferred as Top: Up is the desktop boundary and Down
-        // steps to Full (a Full row would instead step to Bottom).
+        // NOT Full. Inferred as pure Top half (full width): Up is the
+        // desktop boundary and Down flips to Bottom (KDE-style; a quadrant
+        // Top would instead expand to Full).
         let monitors = [monitor(0, 0, 1000, 1000)];
         let actual = geo(0, 0, 1000, 699);
         let up = advance_with_topology(Direction::Up, &monitors, &monitors, actual, None).unwrap();
@@ -908,7 +1036,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (down.monitor, down.column, down.row),
-            (0, Column::Full, Row::Full)
+            (0, Column::Full, Row::Bottom)
         );
     }
 
@@ -1012,8 +1140,8 @@ mod tests {
     fn saved_monitor_index_is_reconciled_with_live_window_geometry() {
         let monitors = [monitor(0, 0, 1920, 1080), monitor(1920, 0, 1920, 1080)];
         // Saved index points to monitor 0, but the window is actually in the
-        // right half of monitor 1: the index is re-resolved from the live
-        // geometry and Left completes the local cycle on monitor 1.
+        // pure right half of monitor 1: the index is re-resolved from the live
+        // geometry and Left flips it to the left half on monitor 1 (KDE-style).
         let next = advance_with_topology(
             Direction::Left,
             &monitors,
@@ -1023,6 +1151,6 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!((next.monitor, next.column), (1, Column::Full));
+        assert_eq!((next.monitor, next.column), (1, Column::Left));
     }
 }

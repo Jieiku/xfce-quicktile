@@ -34,7 +34,7 @@ fn socket_path() -> PathBuf {
 // value is only used to scope the /tmp socket-path fallback). Safe to
 // call: it is a pure query that returns the caller's uid and takes no
 // pointer arguments, so there are no aliasing or UB concerns.
-unsafe extern "C" {
+extern "C" {
     fn getuid() -> u32;
 }
 fn libc_uid() -> u32 {

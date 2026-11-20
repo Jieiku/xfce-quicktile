@@ -8,12 +8,18 @@ The daemon is not XFCE-dependent, but the included installer configures XFCE aut
 
 ## Behavior
 
-Each monitor is divided into left/right and top/bottom halves. Directional shortcuts cycle through three states:
+Each monitor is divided into left/right and top/bottom halves. Directional shortcuts follow KDE/Plasma-style rules:
 
-- **Left:** Right → Full → Left
-- **Right:** Left → Full → Right
-- **Up:** Bottom → Full → Top
-- **Down:** Top → Full → Bottom
+- When the window already occupies a pure half (left/right or top/bottom), pressing the opposite direction **moves** it to the other half instead of expanding to full-screen.
+- When the window occupies a quadrant (¼ of the screen), pressing a direction **extends** that axis to a half (the only case that expands rather than moves).
+- From a full-screen or full-axis state the direction moves to the corresponding half.
+
+Examples (horizontal):
+
+- Left half + Right → Right half
+- Right half + Left → Left half
+- Top-left quadrant + Right → Top half
+- Top half + Right → Top-right quadrant
 
 At monitor boundaries, navigation continues onto the neighboring monitor's opposite half. The perpendicular tile position is preserved. Navigation uses monitor geometry rather than enumeration order, supporting mixed resolutions, negative coordinates, gaps, and staggered layouts.
 
